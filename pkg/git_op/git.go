@@ -1,51 +1,23 @@
-package pkg
+package git_op
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"math/rand"
 	"os"
-	"path"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"os/exec"
-
 	"github.com/google/go-github/github"
 	"golang.org/x/oauth2"
 
-	myerrors "errors"
-
-	myhttp "net/http"
-
-	"github.com/briandowns/spinner"
-	"github.com/common-nighthawk/go-figure"
 	"github.com/fatih/color"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	log "github.com/sirupsen/logrus"
-	"github.com/urfave/cli/v2"
-	"k8s.io/apimachinery/pkg/api/errors"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
-	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/dynamic"
-	kubernetes "k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/restmapper"
-	clientcmd "k8s.io/client-go/tools/clientcmd"
 )
 
 // Git Functions

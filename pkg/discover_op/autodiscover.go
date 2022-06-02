@@ -1,4 +1,4 @@
-package pkg
+package discover_op
 
 import (
 	"fmt"

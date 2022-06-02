@@ -1,4 +1,4 @@
-package pkg
+package k8s_op
 
 import (
 	"bufio"
@@ -358,57 +358,6 @@ func k8s_apply(path string) {
 				log.Info("Policy Updated Successfully")
 			}
 
-			/*
-				decoder := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(b), 100)
-				for {
-					s.Prefix = "Applied " + strconv.Itoa(policy_count) + " policies. Please wait.."
-					s.Start()
-					time.Sleep(4 * time.Second)
-					var rawObj runtime.RawExtension
-					if err = decoder.Decode(&rawObj); err != nil {
-						break
-					}
-
-					obj, gvk, err := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme).Decode(rawObj.Raw, nil, nil)
-					unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-					if err != nil {
-						log.Error(err)
-					}
-
-					unstructuredObj := &unstructured.Unstructured{Object: unstructuredMap}
-
-					gr, err := restmapper.GetAPIGroupResources(clientset.Discovery())
-					if err != nil {
-						log.Error(err)
-					}
-
-					mapper := restmapper.NewDiscoveryRESTMapper(gr)
-					mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-					if err != nil {
-						log.Error(err)
-						fmt.Printf("[%s] Error: %v\n", color.RedString("ERR"), err)
-					} else {
-						policy_count++
-					}
-
-					var dri dynamic.ResourceInterface
-					if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-						if unstructuredObj.GetNamespace() == "" {
-							unstructuredObj.SetNamespace("default")
-						}
-						dri = dd.Resource(mapping.Resource).Namespace(unstructuredObj.GetNamespace())
-					} else {
-						dri = dd.Resource(mapping.Resource)
-					}
-					log.Info(dri)
-					applyOptions := apply.NewApplyOptions(dd, discoveryClient)
-					if err := applyOptions.Apply(context.TODO(), []byte(b)); err != nil {
-						log.Error("Apply error: %v", err)
-						fmt.Printf("[%s] Error in Applying Policy\n", color.RedString("ERR"))
-					}
-
-				}
-			*/
 		}
 		if err != io.EOF {
 			log.Error("End of File ", err)

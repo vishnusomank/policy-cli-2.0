@@ -21,6 +21,15 @@ func banner() {
 
 }
 
+var current_dir, git_dir, user_home, keyword, tags, ad_dir, git_username, git_token, git_repo_url, git_branch_name, git_repo_path, git_policy_name, git_base_branch string
+var policy_count int = 0
+var label_count int = 0
+var autoapply bool
+var version string = "1.0.0"
+var policy_updated *os.File
+
+const repo_path = "/tmp/accuknox-client-repo"
+
 func main() {
 
 	// logging function generating following output
@@ -37,7 +46,7 @@ func main() {
 	log.SetOutput(log_file)
 
 	// to get the current working directory
-	resources.variables.current_dir, err = os.Getwd()
+	current_dir, err = os.Getwd()
 	if err != nil {
 		log.Error(err)
 	}
@@ -145,12 +154,11 @@ func main() {
 			git_repo_url = c.String("git_repo_url")
 			git_branch_name = c.String("git_branch_name")
 			autoapply = c.Bool("auto-apply")
-			client = newClient(git_token)
+			//client = newClient(git_token)
 			git_base_branch = c.String("git_base_branch")
 			banner()
-			git_operation()
-			auto_discover()
-			Init_Git(git_username, git_token, git_repo_url, git_branch_name)
+			//git_operation()
+			//Init_Git(git_username, git_token, git_repo_url, git_branch_name)
 			return nil
 		},
 	}
