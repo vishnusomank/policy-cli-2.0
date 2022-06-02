@@ -9,6 +9,8 @@ import (
 	"github.com/fatih/color"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
+	"github.com/vishnusomank/policy-cli-2.0/pkg/discover_op"
+	"github.com/vishnusomank/policy-cli-2.0/pkg/git_op"
 )
 
 func banner() {
@@ -53,6 +55,8 @@ func main() {
 
 	// adding policy-template directory to current working directory
 	git_dir = current_dir + "/policy-template"
+
+	ad_dir = current_dir + "/ad-policy"
 
 	log.Info("Current Working directory: " + current_dir)
 	log.Info("Github clone directory: " + git_dir)
@@ -154,11 +158,13 @@ func main() {
 			git_repo_url = c.String("git_repo_url")
 			git_branch_name = c.String("git_branch_name")
 			autoapply = c.Bool("auto-apply")
-			//client = newClient(git_token)
 			git_base_branch = c.String("git_base_branch")
 			banner()
-			//git_operation()
-			//Init_Git(git_username, git_token, git_repo_url, git_branch_name)
+			fileUrl := "https://raw.githubusercontent.com/accuknox/tools/main/install.sh"
+			discoverFileUrl := "https://raw.githubusercontent.com/accuknox/tools/main/get_discovered_yamls.sh"
+			git_op.Git_Operation(git_dir)
+			discover_op.Auto_Discover(fileUrl, discoverFileUrl, ad_dir, current_dir)
+			git_op.Init_Git(git_username, git_token, git_repo_url, git_branch_name, git_base_branch, repo_path, ad_dir, current_dir, autoapply)
 			return nil
 		},
 	}

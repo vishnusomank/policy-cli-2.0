@@ -17,12 +17,16 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	log "github.com/sirupsen/logrus"
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"github.com/vishnusomank/policy-cli-2.0/pkg/file_op"
+	"github.com/vishnusomank/policy-cli-2.0/pkg/k8s_op"
 )
 
 // Git Functions
+var policy_template_dir string
 
-func Init_Git(username string, token string, repo_url string, branch_name string, git_base_branch string, repo_path string) {
+func Init_Git(username string, token string, repo_url string, branch_name string, git_base_branch string, repo_path string, ad_dir string, current_dir string, autoapply bool) {
+
+	client := newClient(token)
 
 	s := strings.Split(repo_url, "/")
 	var repoName string
@@ -35,15 +39,15 @@ func Init_Git(username string, token string, repo_url string, branch_name string
 
 	r := GitClone(username, token, repo_url, repo_path, git_base_branch)
 
-	createBranch(r, username, token, branch_name)
+	createBranch(r, username, token, branch_name, git_base_branch, ad_dir, repo_path, autoapply)
 	fmt.Printf("%v branch is created\n", branch_name)
 
 	pushToGithub(r, username, token)
 	fmt.Printf("Pushed to the github repo %v\n", repo_url)
 
-	createPRToGit(token, branch_name, username, repoName)
+	createPRToGit(token, branch_name, username, repoName, client, git_base_branch)
 
-	removeLocalRepo()
+	removeLocalRepo(repo_path)
 }
 
 func GitClone(username string, token string, repo_url string, repo_path string, git_base_branch string) *git.Repository {
@@ -66,7 +70,7 @@ func GitClone(username string, token string, repo_url string, repo_path string, 
 	return r
 }
 
-func createBranch(r *git.Repository, username string, token string, branch_name string) {
+func createBranch(r *git.Repository, username string, token string, branch_name string, git_base_branch string, ad_dir string, repo_path string, autoapply bool) {
 
 	w, _ := r.Worktree()
 
@@ -88,12 +92,10 @@ func createBranch(r *git.Repository, username string, token string, branch_name 
 
 	checkError(err, "create branch: checkout "+branch_name)
 
-	if _, err := os.Stat(git_repo_path); os.IsNotExist(err) {
-		os.Mkdir(git_repo_path, 0755)
-	}
-	k8s_labels(autoapply)
+	file_op.CopyDir(ad_dir, repo_path)
 
-	CopyDir(git_repo_path, repo_path)
+	k8s_op.K8s_Labels(autoapply, policy_template_dir, repo_path)
+
 	w.Add(".")
 
 	author := &object.Signature{
@@ -131,7 +133,7 @@ func newClient(token string) *github.Client {
 
 }
 
-func createPRToGit(token string, branchName string, username string, repoName string) {
+func createPRToGit(token string, branchName string, username string, repoName string, client *github.Client, git_base_branch string) {
 
 	newPR := &github.NewPullRequest{
 		Title:               github.String("PR from KnoxAutoPol CLI"),
@@ -149,7 +151,7 @@ func createPRToGit(token string, branchName string, username string, repoName st
 
 	fmt.Printf("PR created: %s\n", pr.GetHTMLURL())
 	s := strings.Split(pr.GetHTMLURL(), "/")
-	mergePullRequest(username, repoName, s[len(s)-1], token)
+	mergePullRequest(username, repoName, s[len(s)-1], token, client)
 
 }
 
@@ -162,7 +164,7 @@ func stringToInt(number string) int {
 	return intVal
 }
 
-func mergePullRequest(owner, repo, number, token string) error {
+func mergePullRequest(owner, repo, number, token string, client *github.Client) error {
 	fmt.Printf("Attempting to merge PR #%s on %s/%s...\n", number, owner, repo)
 
 	commitMsg := "Commit from Accuknox GitOps CLI"
@@ -185,7 +187,7 @@ func mergePullRequest(owner, repo, number, token string) error {
 	return nil
 }
 
-func removeLocalRepo() {
+func removeLocalRepo(repo_path string) {
 
 	err := os.RemoveAll(repo_path)
 	checkError(err, "removelocalrepo function")
@@ -201,7 +203,7 @@ func checkError(err error, data string) {
 // END Git Functions
 
 // function to clone policy-template repo to current working directory
-func git_clone_policy_templates() {
+func git_clone_policy_templates(git_dir string) {
 
 	log.Info("Started Cloning policy-template repository")
 	fmt.Printf("[%s][%s] Cloning policy-template repository\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("INIT"))
@@ -218,7 +220,7 @@ func git_clone_policy_templates() {
 }
 
 // function to pull latest changes into policy-template folder
-func git_pull_policy_templates() {
+func git_pull_policy_templates(git_dir string) {
 
 	log.Info("Started Pulling into policy-template repository")
 	fmt.Printf("[%s][%s] Fetching updates from policy-template repository\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("INIT"))
@@ -243,32 +245,20 @@ func git_pull_policy_templates() {
 
 // Function to Create connection to kubernetes cluster
 
-func git_operation() {
+func Git_Operation(git_dir string) {
+	policy_template_dir = git_dir
 
 	//check if the policy-template directory exist
 	// if exist pull down the latest changes
 	// else clone the policy-templates repo
 	if _, err := os.Stat(git_dir); !os.IsNotExist(err) {
 
-		git_pull()
+		git_pull_policy_templates(git_dir)
 
 	} else {
 
-		git_clone()
+		git_clone_policy_templates(git_dir)
 
 	}
 
-}
-func delete_all() {
-	logs_path := current_dir + "/logs.log"
-	err := os.RemoveAll(logs_path)
-	if err != nil {
-		log.Error(err)
-		fmt.Printf("[%s] Unable to remove file %s\n", color.RedString("ERR"), logs_path)
-	}
-	err = os.RemoveAll(git_dir)
-	if err != nil {
-		log.Error(err)
-		fmt.Printf("[%s] Unable to remove folder %s\n", color.RedString("ERR"), git_dir)
-	}
 }

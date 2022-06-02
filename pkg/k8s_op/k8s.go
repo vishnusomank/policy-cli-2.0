@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/fatih/color"
 	log "github.com/sirupsen/logrus"
+	"github.com/vishnusomank/policy-cli-2.0/resources"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -30,7 +30,14 @@ import (
 	clientcmd "k8s.io/client-go/tools/clientcmd"
 )
 
+var workloads = []string{"mysql", "elastic", "postgres", "kafka", "ngnix", "percona", "cassandra", "wordpress", "django", "mongodb", "mariadb", "redis", "pinot"}
+
+var autoapply bool
+var label_count int
+var repo_path_git, git_policy_name string
+
 func connectToK8s() *kubernetes.Clientset {
+
 	log.Info("Trying to establish connection to k8s")
 	home, exists := os.LookupEnv("HOME")
 	if !exists {
@@ -61,19 +68,19 @@ func createKeyValuePairs(m map[string]string, disp bool, namespace string) strin
 	b := new(bytes.Buffer)
 	if disp == true {
 		for key, value := range m {
-			if strings.Contains(key, keyword) || strings.Contains(value, keyword) {
-				fmt.Fprintf(b, "%s: %s\n\t\t\t\t\t", key, value)
-			} else if tags == "" && keyword == "" {
-				fmt.Fprintf(b, "%s: %s\n\t\t\t\t\t", key, value)
+			for i := 0; i < len(workloads); i++ {
+				if strings.Contains(key, workloads[i]) || strings.Contains(value, workloads[i]) {
+					fmt.Fprintf(b, "%s: %s\n\t\t\t\t\t", key, value)
+				}
 			}
 		}
 
 	} else {
 		for key, value := range m {
-			if strings.Contains(key, keyword) || strings.Contains(value, keyword) {
-				fmt.Fprintf(b, "%s: %s\n      ", key, value)
-			} else if tags == "" && keyword == "" {
-				fmt.Fprintf(b, "%s: %s\n      ", key, value)
+			for i := 0; i < len(workloads); i++ {
+				if strings.Contains(key, workloads[i]) || strings.Contains(value, workloads[i]) {
+					fmt.Fprintf(b, "%s: %s\n\t\t\t\t\t", key, value)
+				}
 			}
 		}
 	}
@@ -81,7 +88,7 @@ func createKeyValuePairs(m map[string]string, disp bool, namespace string) strin
 }
 
 // FUnction to search files with .yaml extension under policy-template folder
-func policy_search(namespace string, labels string, search string) {
+func policy_search(namespace string, labels string, search string, git_dir string) {
 
 	log.Info("Started searching for files with .yaml extension under policy-template folder")
 
@@ -101,16 +108,6 @@ func policy_search(namespace string, labels string, search string) {
 		log.Error(err)
 		fmt.Printf("[%s] Oops! No files found with .yaml extension. Please try again later.\n", color.RedString("ERR"))
 	}
-	err = filepath.Walk(ad_dir, func(path string, info os.FileInfo, err error) error {
-		log.Info("Started Policy search : " + path + " with labels '" + labels + "' and search '" + search + "'")
-
-		CopyDir(ad_dir, repo_path)
-		return nil
-	})
-	if err != nil {
-		log.Error(err)
-		fmt.Printf("[%s] Oops! No files found with .yaml extension. Please try again later.\n", color.RedString("ERR"))
-	}
 }
 
 func policy_read(policy_name string, namespace string, labels string, search string) {
@@ -123,6 +120,11 @@ func policy_read(policy_name string, namespace string, labels string, search str
 	}
 
 	if strings.Contains(string(content), search) {
+		repo_path := repo_path_git + "/" + strings.ToLower(search)
+
+		if _, err := os.Stat(repo_path); os.IsNotExist(err) {
+			os.Mkdir(repo_path, 0755)
+		}
 
 		file, err := os.Open(policy_name)
 		if err != nil {
@@ -165,7 +167,7 @@ func policy_read(policy_name string, namespace string, labels string, search str
 
 		file.Close()
 
-		policy_updated, err = os.OpenFile(git_repo_path+git_policy_name+".yaml", os.O_CREATE|os.O_WRONLY, 0644)
+		policy_updated, err := os.OpenFile(repo_path+git_policy_name+".yaml", os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Error(err)
 			return
@@ -179,53 +181,55 @@ func policy_read(policy_name string, namespace string, labels string, search str
 		}
 
 	}
+	/*
 
-	if strings.Contains(string(content), keyword) && keyword != "" && tags == "" {
+		if strings.Contains(string(content), keyword) && keyword != "" && tags == "" {
 
-		file, err := os.Open(policy_name)
-		if err != nil {
-			log.Fatal(err)
-		}
-		scanner := bufio.NewScanner(file)
-		var text []string
-		text = append(text, "---")
-		for scanner.Scan() {
-			if strings.Contains(string(scanner.Text()), "namespace:") {
-
-				text = append(text, "  namespace: "+namespace)
-				for scanner.Scan() {
-					if strings.Contains(string(scanner.Text()), "spec:") {
-						break
-					}
-				}
-
-			} else if strings.Contains(string(scanner.Text()), "matchLabels:") && label_count == 0 {
-				text = append(text, "    matchLabels:\n      "+labels)
-				label_count = 1
-				for scanner.Scan() {
-					if strings.Contains(string(scanner.Text()), "file:") || strings.Contains(string(scanner.Text()), "process:") || strings.Contains(string(scanner.Text()), "network:") || strings.Contains(string(scanner.Text()), "capabilities:") || strings.Contains(string(scanner.Text()), "ingress") || strings.Contains(string(scanner.Text()), "egress") {
-						break
-					}
-				}
+			file, err := os.Open(policy_name)
+			if err != nil {
+				log.Fatal(err)
 			}
-			text = append(text, scanner.Text())
-		}
+			scanner := bufio.NewScanner(file)
+			var text []string
+			text = append(text, "---")
+			for scanner.Scan() {
+				if strings.Contains(string(scanner.Text()), "namespace:") {
 
-		file.Close()
+					text = append(text, "  namespace: "+namespace)
+					for scanner.Scan() {
+						if strings.Contains(string(scanner.Text()), "spec:") {
+							break
+						}
+					}
 
-		policy_updated, err = os.OpenFile(git_repo_path+git_policy_name+".yaml", os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Error(err)
-			return
-		}
+				} else if strings.Contains(string(scanner.Text()), "matchLabels:") && label_count == 0 {
+					text = append(text, "    matchLabels:\n      "+labels)
+					label_count = 1
+					for scanner.Scan() {
+						if strings.Contains(string(scanner.Text()), "file:") || strings.Contains(string(scanner.Text()), "process:") || strings.Contains(string(scanner.Text()), "network:") || strings.Contains(string(scanner.Text()), "capabilities:") || strings.Contains(string(scanner.Text()), "ingress") || strings.Contains(string(scanner.Text()), "egress") {
+							break
+						}
+					}
+				}
+				text = append(text, scanner.Text())
+			}
 
-		for _, each_ln := range text {
-			_, err = fmt.Fprintln(policy_updated, each_ln)
+			file.Close()
+
+			policy_updated, err = os.OpenFile(git_repo_path+git_policy_name+".yaml", os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Error(err)
+				return
+			}
+
+			for _, each_ln := range text {
+				_, err = fmt.Fprintln(policy_updated, each_ln)
+				if err != nil {
+					log.Error(err)
+				}
 			}
 		}
-	}
+	*/
 
 }
 
@@ -319,7 +323,7 @@ func k8s_apply(path string) {
 			// Obtain REST interface for the Group version resource and checking for namespace or cluster wide resource
 			var dri dynamic.ResourceInterface
 
-			if gvk.Kind == KUBEARMORHOST_POLICY {
+			if gvk.Kind == resources.KUBEARMORHOST_POLICY {
 				if namespaceNames != "" {
 					dri = dd.Resource(mapping.Resource)
 
@@ -327,7 +331,7 @@ func k8s_apply(path string) {
 
 					dri = dd.Resource(mapping.Resource)
 				}
-			} else if gvk.Kind == CILIUM_KIND_NODE_LABEL {
+			} else if gvk.Kind == resources.CILIUM_KIND_NODE_LABEL {
 				if namespaceNames != "" {
 
 					dri = dd.Resource(mapping.Resource)
@@ -359,17 +363,17 @@ func k8s_apply(path string) {
 			}
 
 		}
-		if err != io.EOF {
-			log.Error("End of File ", err)
-		}
-		s.Stop()
+
 	} else {
 		log.Warn("auto-apply = " + strconv.FormatBool(autoapply))
 	}
 
 }
 
-func k8s_labels(flag bool) {
+func K8s_Labels(flag bool, git_repo_path string, repo_path string) {
+
+	autoapply = flag
+	repo_path_git = repo_path
 
 	clientset := connectToK8s()
 	// access the API to list pods
@@ -386,7 +390,7 @@ func k8s_labels(flag bool) {
 		}
 	}
 	if count == 0 {
-		fmt.Printf("[%s] No labels found in the cluster. Gracefully exiting program.\n", color.RedString("ERR"))
+		fmt.Printf("[%s] No Predefined workloads found in the cluster. Gracefully exiting program.\n", color.RedString("ERR"))
 		os.Exit(1)
 	} else {
 		fmt.Printf("[%s][%s] Found %d Labels\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("Label Count"), count)
@@ -397,11 +401,6 @@ func k8s_labels(flag bool) {
 		fmt.Printf("[%s][%s]    %s\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("Label Details"), val)
 		log.Info("Label values: ", item)
 	}
-	if tags == "" && keyword == "" {
-		s.Prefix = "Searching the Kubernetes Cluster for workloads. Please wait.. "
-	} else if tags != "" && keyword != "" {
-		s.Prefix = "Searching the Kubernetes Cluster for keyword " + keyword + " and tags " + tags + ". Please wait.. "
-	}
 	for _, pod := range pods.Items {
 		labels := createKeyValuePairs(pod.GetLabels(), false, pod.GetNamespace())
 		labels = strings.TrimSuffix(labels, "\n      ")
@@ -410,11 +409,10 @@ func k8s_labels(flag bool) {
 			//	fmt.Printf("[%s][%s] Pod: %s || Labels: %s || Namespace: %s\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("Label Details"), pod.GetName(), labels, pod.GetNamespace())
 			for i := 0; i < len(searchVal); i++ {
 				i++
-				policy_search(pod.GetNamespace(), labels, searchVal[i])
+				policy_search(pod.GetNamespace(), labels, searchVal[i], git_repo_path)
 			}
 		}
 	}
-	fmt.Printf("[%s][%s] Policy file created at %s\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("File Details"), color.GreenString(current_dir+"/policy_updated.yaml"))
 	if flag == false {
 		log.Info("Received flag value false")
 
