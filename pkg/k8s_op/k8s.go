@@ -127,6 +127,10 @@ func policy_read_ad(policy_name string, namespace string, labels string, search 
 		if _, err := os.Stat(repo_path); os.IsNotExist(err) {
 			os.Mkdir(repo_path, 0755)
 		}
+		repo_path = repo_path + "/ad-policy"
+		if _, err := os.Stat(repo_path); os.IsNotExist(err) {
+			os.Mkdir(repo_path, 0755)
+		}
 
 		file, err := os.Open(policy_name)
 		if err != nil {
@@ -163,7 +167,7 @@ func policy_read_ad(policy_name string, namespace string, labels string, search 
 		}
 
 		file.Close()
-		policy_updated, err := os.OpenFile(repo_path+git_policy_name+".yaml", os.O_CREATE|os.O_WRONLY, 0644)
+		policy_updated, err := os.OpenFile(repo_path+"/"+git_policy_name+".yaml", os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Error(err)
 			return
@@ -232,17 +236,26 @@ func policy_read_templates(policy_name string, namespace string, labels string, 
 	}
 
 	if strings.Contains(string(content), search) {
-		var repo_path string
+		var repo_path, temp_path string
 
 		for i := 0; i < len(resources.USEDWORKLOAD); i++ {
 			if strings.Contains(search, resources.USEDWORKLOAD[i]) {
-				repo_path = repo_path_git + "/" + strings.ToLower(resources.USEDWORKLOAD[i]) + "/"
+				repo_path = repo_path_git + "/" + strings.ToLower(resources.USEDWORKLOAD[i])
+				break
+			}
+		}
+		for i := 0; i < len(resources.COMPLIANCE); i++ {
+			if strings.Contains(string(content), resources.COMPLIANCE[i]) {
+				temp_path = "/compliance"
 				break
 			}
 		}
 
 		if _, err := os.Stat(repo_path); os.IsNotExist(err) {
 			os.Mkdir(repo_path, 0755)
+		}
+		if _, err := os.Stat(repo_path + temp_path); os.IsNotExist(err) {
+			os.Mkdir(repo_path+temp_path, 0755)
 		}
 
 		file, err := os.Open(policy_name)
@@ -292,6 +305,14 @@ func policy_read_templates(policy_name string, namespace string, labels string, 
 		}
 
 		file.Close()
+		if repo_path != "" && temp_path != "" {
+			repo_path = repo_path + temp_path + "/"
+		} else {
+			if _, err := os.Stat(repo_path + "/hardening"); os.IsNotExist(err) {
+				os.Mkdir(repo_path+"/hardening", 0755)
+			}
+			repo_path = repo_path + "/hardening/"
+		}
 
 		policy_updated, err := os.OpenFile(repo_path+git_policy_name+".yaml", os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
