@@ -1,11 +1,6 @@
 package resources
 
-import (
-	"errors"
-	"os"
-
-	"github.com/google/go-github/github"
-)
+import "os"
 
 const CREATE = "Create"
 const APPLY = "Apply"
@@ -13,8 +8,8 @@ const DELETE = "Delete"
 const LATEST = "latest"
 
 const CILIUM_VESION = "cilium.io/v2"
-const CILIUM_KIND = "CiliumNetworkPolicy"
-const CILIUM_KIND_NODE_LABEL = "CiliumClusterwideNetworkPolicy"
+const CILIUM_POLICY = "CiliumNetworkPolicy"
+const CILIUM_CLUSTER_POLICY = "CiliumClusterwideNetworkPolicy"
 
 const FORMAT_STRING = "%s:%s@tcp(%s:%s)/%s"
 
@@ -27,23 +22,20 @@ const KUBEARMORHOST_POLICY = "KubeArmorHostPolicy"
 const KUBEARMOR_POLICY = "KubeArmorPolicy"
 const GCP = "GCP"
 
-var version string = "1.0.0"
-var policy_updated *os.File
+var CLI_VERSION string = "2.0.0"
 
-var (
-	client                  *github.Client
-	NotMergableError        = errors.New("Not mergable")
-	BranchNotFoundError     = errors.New("Branch not found")
-	NonDeletableBranchError = errors.New("Branch cannot be deleted")
-	PullReqNotFoundError    = errors.New("Pull request not found")
-)
+var CURRENT_DIR, GIT_DIR, USER_HOME, AD_DIR, GIT_REPO_PATH, GIT_POLICY_NAME string
+var POLICY_COUNT int = 0
+var LABEL_COUNT int = 0
+var AUTOAPPLY bool
+var POLICY_UPDATED *os.File
 
-var current_dir, git_dir, user_home, keyword, tags, ad_dir string
+var REPO_PATH = "/accuknox-client-repo"
 
-var policy_count int = 0
-var label_count int = 0
-var autoapply bool
+var RAND_CHARS = "abcdefghijklmnopqrstuvwxyz1234567890"
 
-var git_username, git_token, git_repo_url, git_branch_name, git_repo_path, git_policy_name, git_base_branch string
+var WORKLOADS = []string{"mysql", "elastic", "postgres", "kafka", "ngnix", "percona", "cassandra", "wordpress", "django", "mongodb", "mariadb", "redis", "pinot"}
 
-const repo_path = "/tmp/accuknox-client-repo"
+var USEDWORKLOAD []string
+
+var USEDWORKLOADMAP = make(map[string]bool)
