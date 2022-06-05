@@ -17,7 +17,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishnusomank/policy-cli-2.0/pkg/file_op"
 	"github.com/vishnusomank/policy-cli-2.0/pkg/k8s_op"
 )
 
@@ -40,10 +39,10 @@ func Init_Git(username string, token string, repo_url string, branch_name string
 	r := GitClone(username, token, repo_url, repo_path, git_base_branch)
 
 	createBranch(r, username, token, branch_name, git_base_branch, ad_dir, repo_path, autoapply)
-	fmt.Printf("%v branch is created\n", branch_name)
+	fmt.Printf("[%s][%s] Successfully created branch "+branch_name+"\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.GreenString("DONE"))
 
 	pushToGithub(r, username, token)
-	fmt.Printf("Pushed to the github repo %v\n", repo_url)
+	fmt.Printf("[%s][%s] Successfully pushed to the GitHub repository %v\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.GreenString("DONE"), color.CyanString(repo_url))
 
 	createPRToGit(token, branch_name, username, repoName, client, git_base_branch)
 
@@ -92,19 +91,17 @@ func createBranch(r *git.Repository, username string, token string, branch_name 
 
 	checkError(err, "create branch: checkout "+branch_name)
 
-	file_op.CopyDir(ad_dir, repo_path)
-
-	k8s_op.K8s_Labels(autoapply, policy_template_dir, repo_path)
+	k8s_op.K8s_Labels(autoapply, policy_template_dir, repo_path, ad_dir)
 
 	w.Add(".")
 
 	author := &object.Signature{
-		Name:  "KnoxAutoPol",
+		Name:  "autodiscovery2.0",
 		Email: "vishnu@accuknox.com",
 		When:  time.Now(),
 	}
 
-	w.Commit("Commit from KnoxAutoPol CLI", &git.CommitOptions{Author: author})
+	w.Commit("Commit from autodiscovery2.0 CLI", &git.CommitOptions{Author: author})
 }
 
 func pushToGithub(r *git.Repository, username, password string) {
@@ -136,20 +133,21 @@ func newClient(token string) *github.Client {
 func createPRToGit(token string, branchName string, username string, repoName string, client *github.Client, git_base_branch string) {
 
 	newPR := &github.NewPullRequest{
-		Title:               github.String("PR from KnoxAutoPol CLI"),
+		Title:               github.String("PR from autodiscovery2.0 CLI"),
 		Head:                github.String(branchName),
 		Base:                github.String(git_base_branch),
-		Body:                github.String("This is an automated PR created by KnoxAutoPol CLI"),
+		Body:                github.String("This is an automated PR created by autodiscovery2.0 CLI"),
 		MaintainerCanModify: github.Bool(true),
 	}
 
 	pr, _, err := client.PullRequests.Create(context.Background(), username, repoName, newPR)
 	if err != nil {
-		fmt.Println("There is a Git Error " + err.Error())
+		fmt.Printf("[%s][%s] Oops! Pull request creation unsuccessful. Read more %s\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"), color.RedString(err.Error()))
 		return
 	}
 
-	fmt.Printf("PR created: %s\n", pr.GetHTMLURL())
+	fmt.Printf("[%s][%s] Pull request creation successful. Please follow this link to view the PR [%s]\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.GreenString("DONE"), color.CyanString(pr.GetHTMLURL()))
+
 	s := strings.Split(pr.GetHTMLURL(), "/")
 	mergePullRequest(username, repoName, s[len(s)-1], token, client)
 
@@ -158,16 +156,17 @@ func createPRToGit(token string, branchName string, username string, repoName st
 func stringToInt(number string) int {
 	intVal, err := strconv.Atoi(number)
 	if err != nil {
-		fmt.Printf("[%s] Oops! String to integer conversion failed\n", color.RedString("ERR"))
+		fmt.Printf("[%s][%s] Oops! String to integer conversion failed\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
 		log.Warn(err)
 	}
 	return intVal
 }
 
 func mergePullRequest(owner, repo, number, token string, client *github.Client) error {
-	fmt.Printf("Attempting to merge PR #%s on %s/%s...\n", number, owner, repo)
 
-	commitMsg := "Commit from Accuknox GitOps CLI"
+	fmt.Printf("[%s][%s] Attempting to merge PR #%s on %s/%s\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("INFO"), color.CyanString(number), color.CyanString(owner), color.CyanString(repo))
+
+	commitMsg := "Commit from AccuKnox autodiscover2.0 CLI"
 	_, _, mergeErr := client.PullRequests.Merge(
 		context.Background(),
 		owner,
@@ -178,9 +177,9 @@ func mergePullRequest(owner, repo, number, token string, client *github.Client) 
 	)
 
 	if mergeErr != nil {
-		fmt.Println("Received an error!", mergeErr)
+		fmt.Printf("[%s][%s] Oops! Received an error! "+mergeErr.Error()+"\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
 	} else {
-		fmt.Printf("Successfully merged PR #%s on %s/%s...\n", number, owner, repo)
+		fmt.Printf("[%s][%s] Successfully merged PR #%s on %s/%s\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.GreenString("DONE"), color.CyanString(number), color.CyanString(owner), color.CyanString(repo))
 
 	}
 
@@ -195,7 +194,7 @@ func removeLocalRepo(repo_path string) {
 
 func checkError(err error, data string) {
 	if err != nil {
-		fmt.Printf("[%s] Oops! Error from \n"+data, color.RedString("ERR"))
+		fmt.Printf("[%s][%s] Oops! Error from \n"+data, color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
 		log.Warn(err)
 	}
 }
