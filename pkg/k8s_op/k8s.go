@@ -30,11 +30,19 @@ import (
 	clientcmd "k8s.io/client-go/tools/clientcmd"
 )
 
-var workloads = []string{"mysql", "elastic", "postgres", "kafka", "ngnix", "percona", "cassandra", "wordpress", "django", "mongodb", "mariadb", "redis", "pinot"}
-
 var autoapply bool
 var label_count int
 var repo_path_git, git_policy_name string
+
+func checkWorkloadIsMapped(workloadName string) {
+
+	if resources.USEDWORKLOADMAP[workloadName] {
+		return // Already in the map
+	}
+	resources.USEDWORKLOAD = append(resources.USEDWORKLOAD, workloadName)
+	resources.USEDWORKLOADMAP[workloadName] = true
+
+}
 
 func connectToK8s() *kubernetes.Clientset {
 
@@ -54,7 +62,7 @@ func connectToK8s() *kubernetes.Clientset {
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Error("Failed to create K8s clientset")
-		fmt.Printf("[%s] Failed to connect to Kubernetes cluster. Please try again.\n", color.RedString("ERR"))
+		fmt.Printf("[%s][%s] Failed to connect to Kubernetes cluster. Please try again.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
 	}
 
 	return clientset
@@ -67,19 +75,23 @@ func createKeyValuePairs(m map[string]string, disp bool, namespace string) strin
 
 	b := new(bytes.Buffer)
 	if disp == true {
+		log.Info("Started map to string conversion on labels with display value= " + strconv.FormatBool(disp))
 		for key, value := range m {
-			for i := 0; i < len(workloads); i++ {
-				if strings.Contains(key, workloads[i]) || strings.Contains(value, workloads[i]) {
+			for i := 0; i < len(resources.WORKLOADS); i++ {
+				if strings.Contains(key, resources.WORKLOADS[i]) || strings.Contains(value, resources.WORKLOADS[i]) {
+					checkWorkloadIsMapped(resources.WORKLOADS[i])
 					fmt.Fprintf(b, "%s: %s\n\t\t\t\t\t", key, value)
 				}
 			}
 		}
 
 	} else {
+		log.Info("Started map to string conversion on labels with display value= " + strconv.FormatBool(disp))
 		for key, value := range m {
-			for i := 0; i < len(workloads); i++ {
-				if strings.Contains(key, workloads[i]) || strings.Contains(value, workloads[i]) {
-					fmt.Fprintf(b, "%s: %s\n\t\t\t\t\t", key, value)
+			for i := 0; i < len(resources.WORKLOADS); i++ {
+				if strings.Contains(key, resources.WORKLOADS[i]) || strings.Contains(value, resources.WORKLOADS[i]) {
+					checkWorkloadIsMapped(resources.WORKLOADS[i])
+					fmt.Fprintf(b, "%s: %s\n      ", key, value)
 				}
 			}
 		}
@@ -87,32 +99,12 @@ func createKeyValuePairs(m map[string]string, disp bool, namespace string) strin
 	return b.String()
 }
 
-// FUnction to search files with .yaml extension under policy-template folder
-func policy_search(namespace string, labels string, search string, git_dir string) {
+func policy_read_ad(policy_name string, namespace string, labels string, search string) {
 
-	log.Info("Started searching for files with .yaml extension under policy-template folder")
+	var nameCount = 0
+	var namePrefix string
 
-	err := filepath.Walk(git_dir, func(path string, info os.FileInfo, err error) error {
-		log.Info("git directory accessed : " + git_dir)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		if strings.Contains(path, ".yaml") {
-			label_count = 0
-			policy_read(path, namespace, labels, search)
-		}
-		return nil
-	})
-	if err != nil {
-		log.Error(err)
-		fmt.Printf("[%s] Oops! No files found with .yaml extension. Please try again later.\n", color.RedString("ERR"))
-	}
-}
-
-func policy_read(policy_name string, namespace string, labels string, search string) {
-
-	log.Info("Started Policy search : " + policy_name + " with labels '" + labels + "' and search '" + search + "'")
+	log.Info("Started AD Policy search : " + policy_name + " with labels '" + labels + "' and search '" + search + "'")
 
 	content, err := os.ReadFile(policy_name)
 	if err != nil {
@@ -120,7 +112,17 @@ func policy_read(policy_name string, namespace string, labels string, search str
 	}
 
 	if strings.Contains(string(content), search) {
-		repo_path := repo_path_git + "/" + strings.ToLower(search)
+
+		log.Info("Found AD policy " + policy_name + " with search '" + search + "'")
+
+		var repo_path string
+
+		for i := 0; i < len(resources.USEDWORKLOAD); i++ {
+			if strings.Contains(search, resources.USEDWORKLOAD[i]) {
+				repo_path = repo_path_git + "/" + strings.ToLower(resources.USEDWORKLOAD[i]) + "/"
+				break
+			}
+		}
 
 		if _, err := os.Stat(repo_path); os.IsNotExist(err) {
 			os.Mkdir(repo_path, 0755)
@@ -132,13 +134,133 @@ func policy_read(policy_name string, namespace string, labels string, search str
 		}
 		scanner := bufio.NewScanner(file)
 		var text []string
-		text = append(text, "---")
+		for scanner.Scan() {
+			if strings.Contains(string(scanner.Text()), resources.CILIUM_CLUSTER_POLICY) {
+				namePrefix = "ccnp-"
+			} else if strings.Contains(string(scanner.Text()), resources.CILIUM_POLICY) {
+				namePrefix = "cnp-"
+			} else if strings.Contains(string(scanner.Text()), resources.KUBEARMOR_POLICY) {
+				namePrefix = "ksp-"
+			} else if strings.Contains(string(scanner.Text()), resources.KUBEARMORHOST_POLICY) {
+				namePrefix = "hsp-"
+			}
+			if strings.Contains(string(scanner.Text()), "name:") && nameCount == 0 {
+				policy_val := strings.FieldsFunc(string(scanner.Text()), Split)
+				policy_val[1] = strings.Replace(policy_val[1], " ", "", -1)
+				git_policy_name = strings.Replace(namePrefix+policy_val[1], "\"", "", -1)
+				git_policy_name = strings.Replace(git_policy_name, "block", "audit", -1)
+				git_policy_name = strings.Replace(git_policy_name, "restrict", "audit", -1)
+				git_policy_name = strings.Replace(git_policy_name, "allow", "audit", -1)
+				nameCount = 1
+				text = append(text, "  name: "+git_policy_name)
+			} else {
+				if strings.Contains(string(scanner.Text()), "action:") {
+					text = append(text, "  action: Audit")
+				} else {
+					text = append(text, scanner.Text())
+				}
+			}
+		}
+
+		file.Close()
+		policy_updated, err := os.OpenFile(repo_path+git_policy_name+".yaml", os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+
+		for _, each_ln := range text {
+			_, err = fmt.Fprintln(policy_updated, each_ln)
+			if err != nil {
+				log.Error(err)
+			}
+		}
+
+	}
+
+}
+
+// FUnction to search files with .yaml extension under policy-template folder
+func policy_search(namespace string, labels string, search string, git_dir string, ad_dir string) {
+
+	log.Info("Started searching for files with .yaml extension under " + git_dir)
+
+	err := filepath.Walk(git_dir, func(path string, info os.FileInfo, err error) error {
+		log.Info("git directory accessed : " + git_dir)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		if strings.Contains(path, ".yaml") {
+			label_count = 0
+			policy_read_templates(path, namespace, labels, search)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Error(err)
+		fmt.Printf("[%s][%s] Oops! No files found with .yaml extension. Please try again later.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
+	}
+
+	log.Info("Started searching for files with .yaml extension under " + ad_dir)
+
+	err = filepath.Walk(ad_dir, func(path string, info os.FileInfo, err error) error {
+		log.Info("AD directory accessed : " + ad_dir)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		if strings.Contains(path, ".yaml") {
+			label_count = 0
+			policy_read_ad(path, namespace, labels, search)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Error(err)
+		fmt.Printf("[%s][%s] Oops! No files found with .yaml extension. Please try again later.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
+	}
+}
+
+func policy_read_templates(policy_name string, namespace string, labels string, search string) {
+
+	log.Info("Started Template Policy search : " + policy_name + " with labels '" + labels + "' and search '" + search + "'")
+
+	content, err := os.ReadFile(policy_name)
+	if err != nil {
+		log.Error(err)
+	}
+
+	if strings.Contains(string(content), search) {
+		var repo_path string
+
+		for i := 0; i < len(resources.USEDWORKLOAD); i++ {
+			if strings.Contains(search, resources.USEDWORKLOAD[i]) {
+				repo_path = repo_path_git + "/" + strings.ToLower(resources.USEDWORKLOAD[i]) + "/"
+				break
+			}
+		}
+
+		if _, err := os.Stat(repo_path); os.IsNotExist(err) {
+			os.Mkdir(repo_path, 0755)
+		}
+
+		file, err := os.Open(policy_name)
+		if err != nil {
+			log.Fatal(err)
+		}
+		scanner := bufio.NewScanner(file)
+		var text []string
 		for scanner.Scan() {
 			if strings.Contains(string(scanner.Text()), "name:") {
 				policy_val := strings.FieldsFunc(string(scanner.Text()), Split)
+				policy_val[1] = strings.Replace(policy_val[1], " ", "", -1)
 				git_policy_name = strings.Replace(policy_val[1]+"-"+shortID(7), "\"", "", -1)
+				git_policy_name = strings.Replace(git_policy_name, "block", "audit", -1)
+				git_policy_name = strings.Replace(git_policy_name, "restrict", "audit", -1)
+				git_policy_name = strings.Replace(git_policy_name, "allow", "audit", -1)
 
-				text = append(text, string(scanner.Text())+"-"+shortID(7))
+				text = append(text, "  name: "+git_policy_name)
 				for scanner.Scan() {
 					if strings.Contains(string(scanner.Text()), "namespace:") {
 						break
@@ -162,7 +284,11 @@ func policy_read(policy_name string, namespace string, labels string, search str
 					}
 				}
 			}
-			text = append(text, scanner.Text())
+			if strings.Contains(string(scanner.Text()), "action:") {
+				text = append(text, "  action: Audit")
+			} else {
+				text = append(text, scanner.Text())
+			}
 		}
 
 		file.Close()
@@ -181,66 +307,15 @@ func policy_read(policy_name string, namespace string, labels string, search str
 		}
 
 	}
-	/*
-
-		if strings.Contains(string(content), keyword) && keyword != "" && tags == "" {
-
-			file, err := os.Open(policy_name)
-			if err != nil {
-				log.Fatal(err)
-			}
-			scanner := bufio.NewScanner(file)
-			var text []string
-			text = append(text, "---")
-			for scanner.Scan() {
-				if strings.Contains(string(scanner.Text()), "namespace:") {
-
-					text = append(text, "  namespace: "+namespace)
-					for scanner.Scan() {
-						if strings.Contains(string(scanner.Text()), "spec:") {
-							break
-						}
-					}
-
-				} else if strings.Contains(string(scanner.Text()), "matchLabels:") && label_count == 0 {
-					text = append(text, "    matchLabels:\n      "+labels)
-					label_count = 1
-					for scanner.Scan() {
-						if strings.Contains(string(scanner.Text()), "file:") || strings.Contains(string(scanner.Text()), "process:") || strings.Contains(string(scanner.Text()), "network:") || strings.Contains(string(scanner.Text()), "capabilities:") || strings.Contains(string(scanner.Text()), "ingress") || strings.Contains(string(scanner.Text()), "egress") {
-							break
-						}
-					}
-				}
-				text = append(text, scanner.Text())
-			}
-
-			file.Close()
-
-			policy_updated, err = os.OpenFile(git_repo_path+git_policy_name+".yaml", os.O_CREATE|os.O_WRONLY, 0644)
-			if err != nil {
-				log.Error(err)
-				return
-			}
-
-			for _, each_ln := range text {
-				_, err = fmt.Fprintln(policy_updated, each_ln)
-				if err != nil {
-					log.Error(err)
-				}
-			}
-		}
-	*/
 
 }
 
-var chars = "abcdefghijklmnopqrstuvwxyz1234567890-"
-
 func shortID(length int) string {
-	ll := len(chars)
+	ll := len(resources.RAND_CHARS)
 	b := make([]byte, length)
 	rand.Read(b) // generates len(b) random bytes
 	for i := 0; i < length; i++ {
-		b[i] = chars[int(b[i])%ll]
+		b[i] = resources.RAND_CHARS[int(b[i])%ll]
 	}
 	return string(b)
 }
@@ -266,7 +341,7 @@ func k8s_apply(path string) {
 		clientset, err := kubernetes.NewForConfig(config)
 		if err != nil {
 			log.Error("Failed to create K8s clientset")
-			fmt.Printf("[%s] Failed to create Kubernetes Clientset.\n", color.RedString("ERR"))
+			fmt.Printf("[%s][%s] Failed to create Kubernetes Clientset.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
 
 		}
 		log.Info(clientset)
@@ -282,7 +357,7 @@ func k8s_apply(path string) {
 		}
 		discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
 		if err != nil {
-			fmt.Printf("[%s] Oops! discovery client creation failed\n", color.RedString("ERR"))
+			fmt.Printf("[%s][%s] Oops! discovery client creation failed\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
 			log.Warn(err.Error())
 		}
 		log.Info(discoveryClient)
@@ -331,7 +406,7 @@ func k8s_apply(path string) {
 
 					dri = dd.Resource(mapping.Resource)
 				}
-			} else if gvk.Kind == resources.CILIUM_KIND_NODE_LABEL {
+			} else if gvk.Kind == resources.CILIUM_CLUSTER_POLICY {
 				if namespaceNames != "" {
 
 					dri = dd.Resource(mapping.Resource)
@@ -370,7 +445,7 @@ func k8s_apply(path string) {
 
 }
 
-func K8s_Labels(flag bool, git_repo_path string, repo_path string) {
+func K8s_Labels(flag bool, git_repo_path string, repo_path string, ad_dir string) {
 
 	autoapply = flag
 	repo_path_git = repo_path
@@ -390,13 +465,13 @@ func K8s_Labels(flag bool, git_repo_path string, repo_path string) {
 		}
 	}
 	if count == 0 {
-		fmt.Printf("[%s] No Predefined workloads found in the cluster. Gracefully exiting program.\n", color.RedString("ERR"))
+		fmt.Printf("[%s][%s] No Predefined workloads found in the cluster. Gracefully exiting program.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
 		os.Exit(1)
 	} else {
-		fmt.Printf("[%s][%s] Found %d Labels\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("Label Count"), count)
+		fmt.Printf("[%s][%s] Found %d Label(s)\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("Label Count"), count)
 	}
 	for _, item := range temp {
-		val := strings.TrimSuffix(item, "\n\t\t\t\t\t")
+		val := strings.Trim(item, "\n\t\t\t")
 
 		fmt.Printf("[%s][%s]    %s\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("Label Details"), val)
 		log.Info("Label values: ", item)
@@ -404,12 +479,21 @@ func K8s_Labels(flag bool, git_repo_path string, repo_path string) {
 	for _, pod := range pods.Items {
 		labels := createKeyValuePairs(pod.GetLabels(), false, pod.GetNamespace())
 		labels = strings.TrimSuffix(labels, "\n      ")
+		log.Info("disp=false Label values: ", labels)
 		searchVal := strings.FieldsFunc(labels, Split)
+		log.Info("disp=false searchval values: ", searchVal)
 		if labels != "" {
 			//	fmt.Printf("[%s][%s] Pod: %s || Labels: %s || Namespace: %s\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("Label Details"), pod.GetName(), labels, pod.GetNamespace())
 			for i := 0; i < len(searchVal); i++ {
+				log.Info("disp=false parameter i's value : ", i)
 				i++
-				policy_search(pod.GetNamespace(), labels, searchVal[i], git_repo_path)
+				for j := 0; j < len(resources.USEDWORKLOAD); j++ {
+					log.Info("disp=false parameter j's value : ", j)
+					searchVal[i] = strings.Replace(searchVal[i], " ", "", -1)
+					if strings.Contains(searchVal[i], resources.USEDWORKLOAD[j]) {
+						policy_search(pod.GetNamespace(), labels, searchVal[i], git_repo_path, ad_dir)
+					}
+				}
 			}
 		}
 	}
@@ -419,21 +503,22 @@ func K8s_Labels(flag bool, git_repo_path string, repo_path string) {
 		fmt.Printf("[%s][%s] Halting execution because auto-apply is not enabled\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.CyanString("WRN"))
 	} else {
 		fmt.Printf("[%s][%s] Started applying policies\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("INIT"))
-	}
-	err = filepath.Walk(git_repo_path, func(path string, info os.FileInfo, err error) error {
-		log.Info("git directory accessed : " + git_repo_path)
+
+		err = filepath.Walk(git_repo_path, func(path string, info os.FileInfo, err error) error {
+			log.Info("git directory accessed : " + git_repo_path)
+			if err != nil {
+				log.Error(err)
+				return err
+			}
+			if strings.Contains(path, ".yaml") {
+				k8s_apply(path)
+			}
+			return nil
+		})
 		if err != nil {
 			log.Error(err)
-			return err
+			fmt.Printf("[%s][%s] Oops! No files found with .yaml extension. Please try again later.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERR"))
 		}
-		if strings.Contains(path, ".yaml") {
-			k8s_apply(path)
-		}
-		return nil
-	})
-	if err != nil {
-		log.Error(err)
-		fmt.Printf("[%s] Oops! No files found with .yaml extension. Please try again later.\n", color.RedString("ERR"))
 	}
 
 }
