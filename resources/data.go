@@ -36,6 +36,8 @@ var RAND_CHARS = "abcdefghijklmnopqrstuvwxyz1234567890"
 
 var WORKLOADS = []string{"mysql", "elastic", "postgres", "kafka", "ngnix", "percona", "cassandra", "wordpress", "django", "mongodb", "mariadb", "redis", "pinot"}
 
+var COMPLIANCE = []string{"nist", "pci-dss", "stig"}
+
 var USEDWORKLOAD []string
 
 var USEDWORKLOADMAP = make(map[string]bool)
