@@ -30,7 +30,7 @@ func Auto_Discover(installFileUrl string, discoverFileUrl string, ad_dir string,
 	stdout, err := cmd.Output()
 	if err != nil {
 		log.Error(err)
-		fmt.Println(err.Error())
+		fmt.Printf("[%s][%s] Failed to install autodiscovery tools: "+err.Error(), color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERROR"))
 		return
 	}
 	fmt.Printf("[%s][%s] Installed necessary components for auto-discovery of policies.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.GreenString("DONE"))
@@ -55,7 +55,7 @@ func Auto_Discover(installFileUrl string, discoverFileUrl string, ad_dir string,
 	stdout, err = cmd.Output()
 	if err != nil {
 		log.Error(err)
-		fmt.Println(err.Error())
+		fmt.Printf("[%s][%s] Failed to get autodiscovered policies: "+err.Error(), color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.RedString("ERROR"))
 		return
 	}
 	fmt.Printf("[%s][%s] Successfully discovered policies.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.GreenString("DONE"))
