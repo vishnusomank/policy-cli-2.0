@@ -157,13 +157,13 @@ func main() {
 
 			if c.String("git_username") == "" || c.String("git_token") == "" || c.String("git_repo_url") == "" || c.String("git_branch_name") == "" || c.String("git_base_branch") == "" {
 				banner()
-				fmt.Printf("[%s][%s] Parameters missing.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.CyanString("WRN"))
-				fmt.Printf("[%s][%s] Please use autodisovery2.0 --help for help\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.CyanString("WRN"))
+				fmt.Printf("[%s][%s] Parameters missing.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.CyanString("WARN"))
+				fmt.Printf("[%s][%s] Please use autodisovery2.0 --help for help\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.CyanString("WARN"))
 
 			} else {
 				banner()
-				fmt.Printf("[%s][%s] Uses KubeConfig file to connect to cluster.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.CyanString("WRN"))
-				fmt.Printf("[%s][%s] Creates files and folders in current directory.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.CyanString("WRN"))
+				fmt.Printf("[%s][%s] Uses KubeConfig file to connect to cluster.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.CyanString("WARN"))
+				fmt.Printf("[%s][%s] Creates files and folders in current directory.\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.CyanString("WARN"))
 				fileUrl := "https://raw.githubusercontent.com/accuknox/samples/main/discover/install.sh"
 				discoverFileUrl := "https://raw.githubusercontent.com/accuknox/samples/main/discover/get_discovered_yamls.sh"
 				git_op.Git_Operation(resources.GIT_DIR)
