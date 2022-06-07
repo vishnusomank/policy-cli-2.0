@@ -159,10 +159,15 @@ func policy_read_ad(policy_name string, namespace string, labels string, search 
 				text = append(text, "  name: "+git_policy_name)
 			} else {
 				if strings.Contains(string(scanner.Text()), "action:") {
-					text = append(text, "  action: Audit")
-				} else {
-					text = append(text, scanner.Text())
+					actionVal := strings.FieldsFunc(string(scanner.Text()), Split)
+					text = append(text, actionVal[0]+" : Audit")
+					scanner.Scan()
+					if strings.Contains(string(scanner.Text()), "Audit") || strings.Contains(string(scanner.Text()), "Block") || strings.Contains(string(scanner.Text()), "Allow") {
+						scanner.Scan()
+					}
+
 				}
+				text = append(text, scanner.Text())
 			}
 		}
 
@@ -196,8 +201,15 @@ func policy_search(namespace string, labels string, search string, git_dir strin
 			return err
 		}
 		if strings.Contains(path, ".yaml") {
-			label_count = 0
-			policy_read_templates(path, namespace, labels, search)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				log.Error(err)
+			}
+
+			if strings.Contains(string(content), search) {
+				label_count = 0
+				policy_read_templates(path, namespace, labels, search)
+			}
 		}
 		return nil
 	})
@@ -268,7 +280,7 @@ func policy_read_templates(policy_name string, namespace string, labels string, 
 			if strings.Contains(string(scanner.Text()), "name:") {
 				policy_val := strings.FieldsFunc(string(scanner.Text()), Split)
 				policy_val[1] = strings.Replace(policy_val[1], " ", "", -1)
-				git_policy_name = strings.Replace(policy_val[1]+"-"+shortID(7), "\"", "", -1)
+				git_policy_name = strings.Replace(policy_val[1], "\"", "", -1)
 				git_policy_name = strings.Replace(git_policy_name, "block", "audit", -1)
 				git_policy_name = strings.Replace(git_policy_name, "restrict", "audit", -1)
 				git_policy_name = strings.Replace(git_policy_name, "allow", "audit", -1)
@@ -288,7 +300,8 @@ func policy_read_templates(policy_name string, namespace string, labels string, 
 					}
 				}
 
-			} else if strings.Contains(string(scanner.Text()), "matchLabels:") && label_count == 0 {
+			}
+			if strings.Contains(string(scanner.Text()), "matchLabels:") && label_count == 0 {
 				text = append(text, "    matchLabels:\n      "+labels)
 				label_count = 1
 				for scanner.Scan() {
@@ -298,10 +311,16 @@ func policy_read_templates(policy_name string, namespace string, labels string, 
 				}
 			}
 			if strings.Contains(string(scanner.Text()), "action:") {
-				text = append(text, "  action: Audit")
-			} else {
-				text = append(text, scanner.Text())
+				actionVal := strings.FieldsFunc(string(scanner.Text()), Split)
+				text = append(text, actionVal[0]+" : Audit")
+				scanner.Scan()
+				if strings.Contains(string(scanner.Text()), "Audit") || strings.Contains(string(scanner.Text()), "Block") || strings.Contains(string(scanner.Text()), "Allow") {
+					scanner.Scan()
+				}
+
 			}
+			text = append(text, scanner.Text())
+
 		}
 
 		file.Close()
@@ -326,6 +345,7 @@ func policy_read_templates(policy_name string, namespace string, labels string, 
 				log.Error(err)
 			}
 		}
+		policy_updated.Close()
 
 	}
 
@@ -505,17 +525,26 @@ func K8s_Labels(flag bool, git_repo_path string, repo_path string, ad_dir string
 		log.Info("disp=false searchval values: ", searchVal)
 		if labels != "" {
 			//	fmt.Printf("[%s][%s] Pod: %s || Labels: %s || Namespace: %s\n", color.BlueString(time.Now().Format("01-02-2006 15:04:05")), color.BlueString("Label Details"), pod.GetName(), labels, pod.GetNamespace())
-			for i := 0; i < len(searchVal); i++ {
-				log.Info("disp=false parameter i's value : ", i)
-				i++
-				for j := 0; j < len(resources.USEDWORKLOAD); j++ {
-					log.Info("disp=false parameter j's value : ", j)
-					searchVal[i] = strings.Replace(searchVal[i], " ", "", -1)
-					if strings.Contains(searchVal[i], resources.USEDWORKLOAD[j]) {
-						policy_search(pod.GetNamespace(), labels, searchVal[i], git_repo_path, ad_dir)
+			/*
+				for i := 0; i < len(searchVal); i++ {
+					log.Info("disp=false parameter i's value : ", i)
+					i++
+					for j := 0; j < len(resources.USEDWORKLOAD); j++ {
+						log.Info("disp=false parameter j's value : ", j)
+						searchVal[i] = strings.Replace(searchVal[i], " ", "", -1)
+						if strings.Contains(searchVal[i], resources.USEDWORKLOAD[j]) {
+							policy_search(pod.GetNamespace(), labels, searchVal[i], git_repo_path, ad_dir)
+						}
 					}
 				}
+			*/
+			for j := 0; j < len(resources.USEDWORKLOAD); j++ {
+				if strings.Contains(labels, resources.USEDWORKLOAD[j]) {
+					policy_search(pod.GetNamespace(), labels, resources.USEDWORKLOAD[j], git_repo_path, ad_dir)
+				}
+
 			}
+
 		}
 	}
 	if flag == false {
