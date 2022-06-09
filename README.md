@@ -33,6 +33,12 @@ The CLI takes in some inputs from the user and starts its action by connecting t
 </h3>
 
 
+Final Output in GitHub
+
+ <h3 align="center">
+   <img src="./images/discovery-3.png" alt="output-3"></a>
+ </h3>
+
 ## Install autodiscovery2.0
 
 autodiscovery2.0 requires  **go1.17 or higher**  to install successfully. Run the following commands to build the latest version-
